@@ -21,20 +21,47 @@ class AdminGroupFilter(Filter):
 
 @router.callback_query(AdminGroupFilter(), F.data.startswith("admin_approve_"))
 async def admin_approve(callback: CallbackQuery, bot: Bot):
-    # ... yuqoridagi kodlar o'zgarishsiz ...
-
-    # Admin xabarini yangilash (YANGILANGAN QISM)
+    request_id = int(callback.data.replace("admin_approve_", ""))
+    
+    request = await get_premium_request(request_id)
+    if not request:
+        await callback.answer("❌ So'rov topilmadi!", show_alert=True)
+        return
+    
+    if request["status"] != "pending":
+        await callback.answer(f"⚠️ Bu so'rov allaqachon {request['status']} holatida!", show_alert=True)
+        return
+    
+    # 1. 'days' o'zgaruvchisini shu yerda aniqlab olamiz
+    plan = PREMIUM_PLANS.get(request["plan_key"], {})
+    days = plan.get("days", 0)
+    
+    # 2. Premium berish
+    await grant_premium(request["user_id"], days)
+    await update_premium_request(request_id, status="approved")
+    
+    # 3. Foydalanuvchiga xabar
+    try:
+        await bot.send_message(
+            request["user_id"],
+            f"🎉 <b>Premium aktivlashtirildi!</b>\n\n"
+            f"✅ <b>{plan.get('name', '')} Premium</b> hisobingizga qo'shildi.\n"
+            f"📅 Muddat: <b>{days} kun</b>"
+        )
+    except Exception as e:
+        logger.error(f"Foydalanuvchiga xabar yuborishda xato: {e}")
+    
+    # 4. Admin xabarini yangilash (Xato chiqmaydigan versiya)
     admin_name = callback.from_user.full_name
-    await bot.edit_message_caption(
+    await callback.message.delete()
+    await bot.send_message(
         chat_id=callback.message.chat.id,
-        message_id=callback.message.message_id,
-        caption=callback.message.caption + f"\n\n✅ <b>TASDIQLANDI</b> — {admin_name} tomonidan\n"
-                                          f"👑 {days} kunlik premium berildi",
-        reply_markup=None
+        text=f"{callback.message.caption or 'Premium so\'rovi'}\n\n"
+             f"✅ <b>TASDIQLANDI</b> — {admin_name} tomonidan\n"
+             f"👑 {days} kunlik premium berildi",
+        parse_mode="HTML"
     )
     await callback.answer(f"✅ {days} kunlik premium berildi!", show_alert=True)
-    logger.info(f"Admin {callback.from_user.id} #{request_id} so'rovni tasdiqladi")
-
 
 @router.callback_query(AdminGroupFilter(), F.data.startswith("admin_reject_"))
 async def admin_reject(callback: CallbackQuery, bot: Bot):
