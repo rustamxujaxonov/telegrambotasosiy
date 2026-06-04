@@ -189,40 +189,41 @@ async def _build_partner_info(user, is_premium_viewer: bool) -> str:
         return "👤 <b>Anonim muloqotchi</b>"
 
 
-async def _wait_for_match(user_id: int, message: Message, state: FSMContext,
-                           bot: Bot, gender_want: str):
-    """60 soniya davomida mos muloqotchi kutish"""
-    for i in range(12):  # 12 x 5 = 60 sekund
-        await asyncio.sleep(5)
-        
-        # State tekshirish — bekor qilindi?
+async def _wait_for_match(user_id: int, message: Message, state: FSMContext, bot: Bot, gender_want: str):
+    """Muloqotchi topilguncha cheksiz kutish"""
+    
+    while True:
+        # 1. State holatini tekshirish
         current = await state.get_state()
         if current != SearchState.searching.state:
+            await remove_from_queue(user_id)
             return
-        
+
+        # 2. Bazadan mos muloqotchi qidirish
         partner_id = await find_match(user_id, gender_want)
+        
         if partner_id:
+            # Mos topildi!
             await remove_from_queue(user_id)
             await remove_from_queue(partner_id)
             
-            await create_chat(user_id, partner_id)
+            chat_id = await create_chat(user_id, partner_id)
             await state.set_state(SearchState.in_chat)
             
+            # Ma'lumotlarni olish
             user = await get_user(user_id)
             partner = await get_user(partner_id)
             premium_self = await is_premium(user_id)
             premium_partner = await is_premium(partner_id)
             
+            # O'zimizga xabar
             partner_info = await _build_partner_info(partner, premium_self)
-            try:
-                await bot.send_message(
-                    user_id,
-                    f"✅ <b>Muloqotchi topildi!</b>\n\n{partner_info}\n\n💬 Suhbat boshlandi!",
-                    reply_markup=chat_keyboard()
-                )
-            except Exception:
-                pass
+            await message.answer(
+                f"✅ <b>Muloqotchi topildi!</b>\n\n{partner_info}\n\n💬 Suhbat boshlandi!",
+                reply_markup=chat_keyboard()
+            )
             
+            # Sherigimizga xabar
             user_info = await _build_partner_info(user, premium_partner)
             try:
                 await bot.send_message(
@@ -230,25 +231,13 @@ async def _wait_for_match(user_id: int, message: Message, state: FSMContext,
                     f"✅ <b>Muloqotchi topildi!</b>\n\n{user_info}\n\n💬 Suhbat boshlandi!",
                     reply_markup=chat_keyboard()
                 )
-            except Exception:
-                pass
-            return
-    
-    # 60 soniya o'tdi — topilmadi
-    current = await state.get_state()
-    if current == SearchState.searching.state:
-        await remove_from_queue(user_id)
-        await state.clear()
-        premium = await is_premium(user_id)
-        try:
-            await bot.send_message(
-                user_id,
-                "⏰ <b>Muloqotchi topilmadi.</b>\n\n"
-                "Hozir aktiv foydalanuvchilar kam. Keyinroq urinib ko'ring.",
-                reply_markup=main_menu_keyboard(premium)
-            )
-        except Exception:
-            pass
+            except Exception as e:
+                logger.error(f"Partner ga xabar yuborishda xato: {e}")
+            
+            return # Siklni tugatamiz
+
+        # 3. Mos topilmasa, 5 soniya kutib, qayta tekshirish
+        await asyncio.sleep(5)
 
 
 # ─── QIDIRUVNI BEKOR QILISH ─────────────────────────────────────────────────────
