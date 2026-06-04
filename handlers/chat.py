@@ -146,7 +146,6 @@ async def _start_search(message: Message, state: FSMContext, bot: Bot, gender_wa
         partner_info = await _build_partner_info(partner, premium_self)
         await message.answer(
             f"✅ <b>Muloqotchi topildi!</b>\n\n"
-            f"{partner_info}\n\n"
             f"💬 Endi xabar yozing. Suhbat boshlanmoqda...",
             reply_markup=chat_keyboard()
         )
@@ -157,7 +156,6 @@ async def _start_search(message: Message, state: FSMContext, bot: Bot, gender_wa
             await bot.send_message(
                 partner_id,
                 f"✅ <b>Muloqotchi topildi!</b>\n\n"
-                f"{user_info}\n\n"
                 f"💬 Endi xabar yozing. Suhbat boshlanmoqda...",
                 reply_markup=chat_keyboard()
             )
