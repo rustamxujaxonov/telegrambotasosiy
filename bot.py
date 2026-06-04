@@ -30,9 +30,11 @@ async def main():
     
     logger.info("🤖 Bot ishga tushdi...")
     
+    # 1. Eski xabarlarni tozalash (drop_pending_updates=True)
+    # 2. allowed_updates ni bot.delete_webhook ga ham qo'shib qo'yamiz (ba'zi hollarda bu yordam beradi)
     await bot.delete_webhook(drop_pending_updates=True)
     
-    # allowed_updates qo'shildi - bu Business xatoligini yo'qotadi
+    # Yangi: Dispatcher-ni start_polling qilaveramiz
     await dp.start_polling(
         bot, 
         allowed_updates=[
