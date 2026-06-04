@@ -69,10 +69,7 @@ async def is_premium(user_id: int) -> bool:
 
 # ─── PREMIUM SO'ROV ────────────────────────────────────────
 async def create_premium_request(user_id: int, plan_key: str, photo_file_id: str) -> int:
-    return await pool.fetchval("""
-        INSERT INTO premium_requests (user_id, plan_key, photo_file_id)
-        VALUES ($1, $2, $3) RETURNING id
-    """, user_id, plan_key, photo_file_id)
+    return await pool.fetchval("INSERT INTO premium_requests (user_id, plan_key, photo_file_id) VALUES ($1, $2, $3) RETURNING id", user_id, plan_key, photo_file_id)
 
 async def get_premium_request(request_id: int):
     return await pool.fetchrow("SELECT * FROM premium_requests WHERE id = $1", request_id)
@@ -106,3 +103,8 @@ async def get_active_chat(user_id: int):
 
 async def end_chat(user_id: int):
     await pool.execute("UPDATE chats SET is_active=FALSE, ended_at=CURRENT_TIMESTAMP WHERE is_active=TRUE AND (user1_id=$1 OR user2_id=$1)", user_id)
+
+async def get_partner_id(user_id: int) -> int | None:
+    chat = await get_active_chat(user_id)
+    if not chat: return None
+    return chat['user2_id'] if chat['user1_id'] == user_id else chat['user1_id']
