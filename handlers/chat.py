@@ -4,6 +4,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.base import StorageKey  # Yangi qo'shildi
 
 from database import (
     get_user, is_premium,
@@ -134,7 +135,15 @@ async def _start_search(message: Message, state: FSMContext, bot: Bot, gender_wa
         
         chat_id = await create_chat(user_id, partner_id)
         
+        # O'zimizning holatni yangilash
         await state.set_state(SearchState.in_chat)
+        
+        # TUZATILDI: Sherikning holatini ham 'in_chat' ga o'tkazamiz
+        partner_state = FSMContext(
+            storage=state.storage,
+            key=StorageKey(bot_id=bot.id, chat_id=partner_id, user_id=partner_id)
+        )
+        await partner_state.set_state(SearchState.in_chat)
         
         # Foydalanuvchi ma'lumotlarini olish
         user = await get_user(user_id)
@@ -145,8 +154,7 @@ async def _start_search(message: Message, state: FSMContext, bot: Bot, gender_wa
         # O'zimizga xabar
         partner_info = await _build_partner_info(partner, premium_self)
         await message.answer(
-            f"✅ <b>Muloqotchi topildi!</b>\n\n"
-            f"💬 Endi xabar yozing. Suhbat boshlanmoqda...",
+            f"✅ <b>Muloqotchi topildi!</b>\n\n{partner_info}\n\n💬 Endi xabar yozing. Suhbat boshlanmoqda...",
             reply_markup=chat_keyboard()
         )
         
@@ -155,17 +163,13 @@ async def _start_search(message: Message, state: FSMContext, bot: Bot, gender_wa
         try:
             await bot.send_message(
                 partner_id,
-                f"✅ <b>Muloqotchi topildi!</b>\n\n"
-                f"💬 Endi xabar yozing. Suhbat boshlanmoqda...",
+                f"✅ <b>Muloqotchi topildi!</b>\n\n{user_info}\n\n💬 Endi xabar yozing. Suhbat boshlanmoqda...",
                 reply_markup=chat_keyboard()
             )
-            # Partner state'ini yangilash
-            from aiogram.fsm.context import FSMContext
-            from aiogram.fsm.storage.memory import MemoryStorage
         except Exception as e:
             logger.error(f"Partner ga xabar yuborishda xato: {e}")
     else:
-        # Navbatda turish — 60 soniya kutish
+        # Navbatda turish — cheksiz kutish sikli boshlanadi
         asyncio.create_task(_wait_for_match(user_id, message, state, bot, gender_want))
 
 
@@ -177,13 +181,13 @@ async def _build_partner_info(user, is_premium_viewer: bool) -> str:
             f"👤 <b>Muloqotchi:</b>\n"
             f"📝 Ism: <b>{user['full_name']}</b>\n"
             f"🎂 Yosh: <b>{user['age']}</b>\n"
-            f"{gender_text}\n"
+            f"⚡ Jinsi: <b>{gender_text}</b>\n"
             f"📍 Viloyat: <b>{user['region']}</b>"
         )
     else:
         if user:
             gender_emoji = "👦" if user["gender"] == "male" else "👧"
-            return f"{gender_emoji} <b>Anonim muloqotchi</b> tayyor"
+            return f"{gender_emoji} <b>Anonim muloqotchi</b> bilan bog'landingiz."
         return "👤 <b>Anonim muloqotchi</b>"
 
 
@@ -206,7 +210,16 @@ async def _wait_for_match(user_id: int, message: Message, state: FSMContext, bot
             await remove_from_queue(partner_id)
             
             chat_id = await create_chat(user_id, partner_id)
+            
+            # O'zimizning holatni o'zgartiramiz
             await state.set_state(SearchState.in_chat)
+            
+            # TUZATILDI: Sherikning holatini ham 'in_chat' ga o'tkazamiz (Bu orqa fondagi siklini to'xtatadi)
+            partner_state = FSMContext(
+                storage=state.storage,
+                key=StorageKey(bot_id=bot.id, chat_id=partner_id, user_id=partner_id)
+            )
+            await partner_state.set_state(SearchState.in_chat)
             
             # Ma'lumotlarni olish
             user = await get_user(user_id)
@@ -232,10 +245,10 @@ async def _wait_for_match(user_id: int, message: Message, state: FSMContext, bot
             except Exception as e:
                 logger.error(f"Partner ga xabar yuborishda xato: {e}")
             
-            return # Siklni tugatamiz
+            return # Siklni muvaffaqiyatli tugatamiz
 
-        # 3. Mos topilmasa, 5 soniya kutib, qayta tekshirish
-        await asyncio.sleep(5)
+        # 3. Mos topilmasa, 3 soniya kutib, qayta tekshirish
+        await asyncio.sleep(3)
 
 
 # ─── QIDIRUVNI BEKOR QILISH ─────────────────────────────────────────────────────
@@ -264,6 +277,14 @@ async def next_partner(message: Message, state: FSMContext, bot: Bot):
     if partner_id:
         premium_partner = await is_premium(partner_id)
         try:
+            # TUZATILDI: Chatni tark etilgan sherikning holatini (State) o'chiramiz, 
+            # toki u ham asosiy menyuda qolsin, avtomatik qidiruvga tushib ketmasin!
+            partner_state = FSMContext(
+                storage=state.storage,
+                key=StorageKey(bot_id=bot.id, chat_id=partner_id, user_id=partner_id)
+            )
+            await partner_state.clear()
+            
             await bot.send_message(
                 partner_id,
                 "👋 <b>Muloqotchi suhbatni tugatdi.</b>\n\n"
@@ -273,12 +294,12 @@ async def next_partner(message: Message, state: FSMContext, bot: Bot):
         except Exception:
             pass
     
-    await state.clear()
-    
-    # Darhol yangi qidiruv
+    # O'zimizning datani saqlab qolib, state-ni tozalaymiz
     data = await state.get_data()
     gender_want = data.get("gender_want", "any")
+    await state.clear()
     
+    # Biz o'zimiz tugmani bosganimiz uchun darhol yangi qidiruv boshlaymiz
     premium = await is_premium(user_id)
     await message.answer("⏭ <b>Yangi muloqotchi qidirilmoqda...</b>", reply_markup=searching_keyboard())
     
@@ -291,7 +312,15 @@ async def next_partner(message: Message, state: FSMContext, bot: Bot):
         await remove_from_queue(user_id)
         await remove_from_queue(partner_id)
         await create_chat(user_id, partner_id)
+        
         await state.set_state(SearchState.in_chat)
+        
+        # TUZATILDI: Yangi sherik holatini ham yangilaymiz
+        partner_state = FSMContext(
+            storage=state.storage,
+            key=StorageKey(bot_id=bot.id, chat_id=partner_id, user_id=partner_id)
+        )
+        await partner_state.set_state(SearchState.in_chat)
         
         user = await get_user(user_id)
         partner = await get_user(partner_id)
@@ -313,7 +342,6 @@ async def next_partner(message: Message, state: FSMContext, bot: Bot):
         except Exception:
             pass
     else:
-        import asyncio
         asyncio.create_task(_wait_for_match(user_id, message, state, bot, gender_want))
 
 
@@ -328,6 +356,13 @@ async def leave_chat(message: Message, state: FSMContext, bot: Bot):
     if partner_id:
         premium_partner = await is_premium(partner_id)
         try:
+            # TUZATILDI: Suhbatni tashlab chiqqanimizda, sherikning holatini tozalaymiz
+            partner_state = FSMContext(
+                storage=state.storage,
+                key=StorageKey(bot_id=bot.id, chat_id=partner_id, user_id=partner_id)
+            )
+            await partner_state.clear()
+            
             await bot.send_message(
                 partner_id,
                 "🚪 <b>Muloqotchi suhbatni tark etdi.</b>\n\n"
@@ -345,33 +380,47 @@ async def leave_chat(message: Message, state: FSMContext, bot: Bot):
 
 
 # ─── XABAR ALMASHISH ────────────────────────────────────────────────────────────
+
 @router.message(SearchState.in_chat)
 async def relay_message(message: Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
     partner_id = await get_partner_id(user_id)
     
     if not partner_id:
-        logger.warning(f"Foydalanuvchi {user_id} uchun sherik topilmadi, chat yopilmoqda.")
         await state.clear()
-        # Foydalanuvchiga chat tugaganini aytamiz
-        await message.answer("⚠️ <b>Suhbat uzildi.</b> Qaytadan qidirish uchun menyudan tanlang.")
+        premium = await is_premium(user_id)
+        await message.answer(
+            "⚠️ <b>Suhbat topilmadi.</b> Qaytadan qidiring.",
+            reply_markup=main_menu_keyboard(premium)
+        )
         return
     
     try:
-        # Xabarni sherikga yuborish
         if message.text:
             await bot.send_message(partner_id, f"💬 {message.text}")
         elif message.photo:
-            await bot.send_photo(partner_id, message.photo[-1].file_id, caption=f"🖼 {message.caption or ''}")
-        # ... (boshqa turdagi fayllar qismi o'zgarishsiz)
+            await bot.send_photo(partner_id, message.photo[-1].file_id,
+                                 caption=f"🖼 {message.caption or ''}")
+        elif message.voice:
+            await bot.send_voice(partner_id, message.voice.file_id)
+        elif message.video:
+            await bot.send_video(partner_id, message.video.file_id,
+                                 caption=f"🎥 {message.caption or ''}")
         elif message.sticker:
             await bot.send_sticker(partner_id, message.sticker.file_id)
+        elif message.audio:
+            await bot.send_audio(partner_id, message.audio.file_id)
+        elif message.document:
+            await bot.send_document(partner_id, message.document.file_id)
+        elif message.video_note:
+            await bot.send_video_note(partner_id, message.video_note.file_id)
         else:
             await message.answer("⚠️ Bu turdagi fayl yuborib bo'lmaydi.")
-            
     except Exception as e:
-        logger.error(f"Xabar yuborishda xato (Foydalanuvchi: {user_id}, Partner: {partner_id}): {e}")
-        # Agar Telegram xatolik bersa (masalan, foydalanuvchi botni bloklagan bo'lsa), chatni tozalaymiz
-        await end_chat(user_id)
+        logger.error(f"Xabar yuborishda xato: {e}")
         await state.clear()
-        await message.answer("⚠️ <b>Suhbatdosh xabar qabul qilmayapti yoki chat uzildi.</b>")
+        premium = await is_premium(user_id)
+        await message.answer(
+            "⚠️ <b>Suhbat uzildi.</b> Qaytadan urinib ko'ring.",
+            reply_markup=main_menu_keyboard(premium)
+        )
