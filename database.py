@@ -67,6 +67,12 @@ async def is_premium(user_id: int) -> bool:
         return False
     return True
 
+async def grant_premium(user_id: int, days: int):
+    row = await pool.fetchrow("SELECT premium_until FROM users WHERE user_id = $1", user_id)
+    base = row['premium_until'] if (row and row['premium_until'] and row['premium_until'] > datetime.now()) else datetime.now()
+    new_until = base + timedelta(days=days)
+    await pool.execute("UPDATE users SET is_premium=TRUE, premium_until=$1 WHERE user_id=$2", new_until, user_id)
+
 # ─── PREMIUM SO'ROV ────────────────────────────────────────
 async def create_premium_request(user_id: int, plan_key: str, photo_file_id: str) -> int:
     return await pool.fetchval("INSERT INTO premium_requests (user_id, plan_key, photo_file_id) VALUES ($1, $2, $3) RETURNING id", user_id, plan_key, photo_file_id)
@@ -87,6 +93,7 @@ async def remove_from_queue(user_id: int):
 
 async def find_match(user_id: int, gender_want: str):
     user = await get_user(user_id)
+    if not user: return None
     row = await pool.fetchrow("""
         SELECT sq.user_id FROM search_queue sq
         JOIN users u ON sq.user_id = u.user_id
