@@ -1,5 +1,6 @@
 import os
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 # Bot token - Railway environment variable'dan olinadi
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
@@ -13,9 +14,6 @@ ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "-1001234567890"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "8600 1234 5678 9012")
 CARD_OWNER = os.getenv("CARD_OWNER", "Ism Familiya")
 
-# SQLite database fayli (Railway'da persistent volume)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///data/bot.db")
-DB_PATH = "data/bot.db"
 
 # Viloyatlar ro'yxati
 REGIONS = [
