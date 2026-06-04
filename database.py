@@ -59,6 +59,10 @@ async def create_user(user_id: int, username: str, full_name: str, age: int, gen
         username=$2, full_name=$3, age=$4, gender=$5, region=$6
     """, user_id, username, full_name, age, gender, region)
 
+async def update_user(user_id: int, **kwargs):
+    for k, v in kwargs.items():
+        await pool.execute(f"UPDATE users SET {k} = $1 WHERE user_id = $2", v, user_id)
+
 async def is_premium(user_id: int) -> bool:
     row = await pool.fetchrow("SELECT is_premium, premium_until FROM users WHERE user_id = $1", user_id)
     if not row or not row['is_premium']: return False
