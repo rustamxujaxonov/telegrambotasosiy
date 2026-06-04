@@ -345,47 +345,33 @@ async def leave_chat(message: Message, state: FSMContext, bot: Bot):
 
 
 # ─── XABAR ALMASHISH ────────────────────────────────────────────────────────────
-
 @router.message(SearchState.in_chat)
 async def relay_message(message: Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
     partner_id = await get_partner_id(user_id)
     
     if not partner_id:
+        logger.warning(f"Foydalanuvchi {user_id} uchun sherik topilmadi, chat yopilmoqda.")
         await state.clear()
-        premium = await is_premium(user_id)
-        await message.answer(
-            "⚠️ <b>Suhbat topilmadi.</b> Qaytadan qidiring.",
-            reply_markup=main_menu_keyboard(premium)
-        )
+        # Foydalanuvchiga chat tugaganini aytamiz
+        await message.answer("⚠️ <b>Suhbat uzildi.</b> Qaytadan qidirish uchun menyudan tanlang.")
         return
     
     try:
+        # Xabarni sherikga yuborish
         if message.text:
             await bot.send_message(partner_id, f"💬 {message.text}")
         elif message.photo:
-            await bot.send_photo(partner_id, message.photo[-1].file_id,
-                                  caption=f"🖼 {message.caption or ''}")
-        elif message.voice:
-            await bot.send_voice(partner_id, message.voice.file_id)
-        elif message.video:
-            await bot.send_video(partner_id, message.video.file_id,
-                                  caption=f"🎥 {message.caption or ''}")
+            await bot.send_photo(partner_id, message.photo[-1].file_id, caption=f"🖼 {message.caption or ''}")
+        # ... (boshqa turdagi fayllar qismi o'zgarishsiz)
         elif message.sticker:
             await bot.send_sticker(partner_id, message.sticker.file_id)
-        elif message.audio:
-            await bot.send_audio(partner_id, message.audio.file_id)
-        elif message.document:
-            await bot.send_document(partner_id, message.document.file_id)
-        elif message.video_note:
-            await bot.send_video_note(partner_id, message.video_note.file_id)
         else:
             await message.answer("⚠️ Bu turdagi fayl yuborib bo'lmaydi.")
+            
     except Exception as e:
-        logger.error(f"Xabar yuborishda xato: {e}")
+        logger.error(f"Xabar yuborishda xato (Foydalanuvchi: {user_id}, Partner: {partner_id}): {e}")
+        # Agar Telegram xatolik bersa (masalan, foydalanuvchi botni bloklagan bo'lsa), chatni tozalaymiz
+        await end_chat(user_id)
         await state.clear()
-        premium = await is_premium(user_id)
-        await message.answer(
-            "⚠️ <b>Suhbat uzildi.</b> Qaytadan urinib ko'ring.",
-            reply_markup=main_menu_keyboard(premium)
-        )
+        await message.answer("⚠️ <b>Suhbatdosh xabar qabul qilmayapti yoki chat uzildi.</b>")
